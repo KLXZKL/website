@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Water Bill Tracker</title>
+<style>
+  :root{--bg:#f4f8fb;--card:#fff;--ink:#12303f;--mute:#6a8594;--blue:#1b7fbf;--line:#dce8ef;--ok:#1f9d6b;--warn:#d9822b}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);padding:16px}
+  .wrap{max-width:1000px;margin:auto}
+  h1{margin:0 0 4px}
+  .sub{color:var(--mute);margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .settings{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
+  label{font-size:12px;color:var(--mute);display:block;margin-bottom:4px}
+  input[type=number],input[type=text]{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:14px;width:100%}
+  .totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  .tot{background:var(--blue);color:#fff;border-radius:10px;padding:12px}
+  .tot small{opacity:.85;display:block}
+  .tot b{font-size:22px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-size:12px;text-align:left;color:var(--mute);padding:6px;border-bottom:2px solid var(--line)}
+  td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  td input{width:80px}
+  .name{font-weight:600}
+  .rate{color:var(--blue);font-weight:600;white-space:nowrap}
+  button{border:0;border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+  .start{background:var(--ok);color:#fff}
+  .stop{background:var(--warn);color:#fff}
+  .ghost{background:#e8f1f7;color:var(--ink)}
+  .bar{height:10px;background:#e8f1f7;border-radius:5px;overflow:hidden;min-width:80px}
+  .bar i{display:block;height:100%;background:var(--blue)}
+  .live{font-variant-numeric:tabular-nums;color:var(--ok);font-weight:600}
+  .scroll{overflow-x:auto}
+  .note{font-size:12px;color:var(--mute);margin-top:8px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💧 Water Bill Tracker</h1>
+  <div class="sub">See how much each faucet, shower, toilet and appliance costs you per hour, per day and per month.</div>
+
+  <div class="card">
+    <div class="settings">
+      <div><label>Water rate (₱ per m³ = 1,000 liters)</label><input type="number" id="rate" value="45" step="0.5" min="0"></div>
+      <div><label>Days in billing month</label><input type="number" id="days" value="30" min="1" max="31"></div>
+      <div><label>Monthly budget (₱, optional)</label><input type="number" id="budget" value="800" min="0"></div>
+    </div>
+    <div class="note">Check your own rate on your Manila Water / Maynilad / local water district bill (total bill ÷ cubic meters used). Flow rates are typical estimates; measure yours with a bucket and a timer for better accuracy.</div>
+  </div>
+
+  <div class="card">
+    <div class="totals">
+      <div class="tot"><small>Estimated per day</small><b id="tDay">₱0</b></div>
+      <div class="tot"><small>Estimated per month</small><b id="tMonth">₱0</b></div>
+      <div class="tot"><small>Liters per day</small><b id="tLit">0 L</b></div>
+      <div class="tot"><small>Logged today (timers)</small><b id="tLog">₱0</b></div>
+    </div>
+    <div class="note" id="budgetNote"></div>
+  </div>
+
+  <div class="card scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Outlet</th><th>Flow</th><th>Cost per hour</th><th>Use per day</th>
+          <th>₱ / day</th><th>₱ / month</th><th>Share</th><th>Live timer</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="actions">
+      <button class="ghost" id="addBtn">+ Add outlet</button>
+      <button class="ghost" id="resetLog">Reset today's log</button>
+      <button class="ghost" id="resetAll">Restore defaults</button>
+    </div>
+    <div class="note">Flowing outlets (faucet, shower, hose…) are measured in <b>L/min</b> and <b>minutes per day</b>. Per-use outlets (toilet flush, washing machine, dishwasher…) are measured in <b>liters per use</b> and <b>uses per day</b>.</div>
+  </div>
+</div>
+
+<script>
+const KEY = "waterTrackerV1";
+
+// type "flow": flow = L/min, use = minutes/day  |  type "use": flow = L/use, use = uses/day
+const DEFAULTS = [
+  {name:"🚰 Kitchen faucet",        type:"flow", flow:6,   use:20},
+  {name:"🚿 Shower",                type:"flow", flow:9,   use:15},
+  {name:"🚰 Bathroom sink faucet",  type:"flow", flow:5,   use:8},
+  {name:"🪣 Tabo / bucket (CR)",    type:"use",  flow:4,   use:6},
+  {name:"🚽 Toilet flush",          type:"use",  flow:6,   use:8},
+  {name:"🧺 Washing machine",       type:"use",  flow:100, use:0.5},
+  {name:"🍽️ Dishwasher",            type:"use",  flow:15,  use:0.5},
+  {name:"🌿 Garden hose",           type:"flow", flow:15,  use:10},
+  {name:"🚗 Car washing (hose)",    type:"flow", flow:15,  use:5},
+  {name:"🧽 Outdoor / laundry faucet", type:"flow", flow:8, use:10},
+  {name:"🛁 Bathtub (fill)",        type:"use",  flow:150, use:0},
+  {name:"🐕 Pet washing / misc.",   type:"use",  flow:20,  use:0}
+];
+
+let state = load();
+let timers = {}; // index -> start timestamp (ms)
+
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if(s && s.items) return s;
+  }catch(e){}
+  return fresh();
+}
+function fresh(){
+  return {
+    rate:45, days:30, budget:800,
+    items: DEFAULTS.map(d => ({...d, logSec:0})),
+    logDate: today()
+  };
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+function today(){ return new Date().toDateString(); }
+
+// ---------- calculations ----------
+const php = n => "₱" + n.toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const costPerLiter = () => state.rate / 1000;
+
+function calc(it){
+  const cpl = costPerLiter();
+  if(it.type === "flow"){
+    const litersPerHour = it.flow * 60;
+    return {
+      perHour: litersPerHour * cpl,
+      perUnit: null,
+      litersDay: it.flow * it.use,
+      costDay: it.flow * it.use * cpl
+    };
+  }
+  return {
+    perHour: null,
+    perUnit: it.flow * cpl,
+    litersDay: it.flow * it.use,
+    costDay: it.flow * it.use * cpl
+  };
+}
+
+// logged cost from timers (flow) or counted uses (use)
+function loggedCost(it, i){
+  const cpl = costPerLiter();
+  let sec = it.logSec;
+  if(timers[i]) sec += (Date.now()-timers[i])/1000;
+  if(it.type === "flow") return (sec/60) * it.flow * cpl;
+  return sec * it.flow * cpl; // for "use" outlets logSec stores number of uses
+}
+
+// ---------- rendering ----------
+function render(){
+  if(state.logDate !== today()){ state.items.forEach(i=>i.logSec=0); state.logDate = today(); }
+  const tbody = document.getElementById("rows");
+  const totalDay = state.items.reduce((s,it)=>s+calc(it).costDay,0);
+  tbody.innerHTML = "";
+  state.items.forEach((it,i)=>{
+    const c = calc(it);
+    const share = totalDay ? (c.costDay/totalDay*100) : 0;
+    const flowTxt = it.type==="flow" ? `${it.flow} L/min` : `${it.flow} L/use`;
+    const rateTxt = it.type==="flow" ? `${php(c.perHour)} / hour` : `${php(c.perUnit)} / use`;
+    const useLabel = it.type==="flow" ? "min/day" : "uses/day";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="name">${esc(it.name)}</td>
+      <td><input type="number" min="0" step="0.5" value="${it.flow}" data-i="${i}" data-f="flow"> <small>${it.type==="flow"?"L/min":"L/use"}</small></td>
+      <td class="rate">${rateTxt}</td>
+      <td><input type="number" min="0" step="0.5" value="${it.use}" data-i="${i}" data-f="use"> <small>${useLabel}</small></td>
+      <td>${php(c.costDay)}</td>
+      <td>${php(c.costDay*state.days)}</td>
+      <td><div class="bar"><i style="width:${share}%"></i></div><small>${share.toFixed(0)}%</small></td>
+      <td id="live${i}"></td>`;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll("input").forEach(inp=>{
+    inp.addEventListener("change",e=>{
+      const i = +e.target.dataset.i, f = e.target.dataset.f;
+      state.items[i][f] = Math.max(0, parseFloat(e.target.value)||0);
+      save(); render();
+    });
+  });
+  updateLive();
+  updateTotals(totalDay);
+}
+
+function updateLive(){
+  state.items.forEach((it,i)=>{
+    const cell = document.getElementById("live"+i);
+    if(!cell) return;
+    if(it.type==="flow"){
+      const running = !!timers[i];
+      let sec = it.logSec + (running ? (Date.now()-timers[i])/1000 : 0);
+      cell.innerHTML = `
+        <button class="${running?"stop":"start"}" onclick="toggle(${i})">${running?"Stop":"Start"}</button>
+        <span class="live">${fmtTime(sec)}</span> · ${php(loggedCost(it,i))}`;
+    }else{
+      cell.innerHTML = `
+        <button class="start" onclick="addUse(${i})">+1 use</button>
+        <span class="live">${it.logSec}×</span> · ${php(loggedCost(it,i))}`;
+    }
+  });
+  const log = state.items.reduce((s,it,i)=>s+loggedCost(it,i),0);
+  document.getElementById("tLog").textContent = php(log);
+}
+
+function updateTotals(totalDay){
+  const lit = state.items.reduce((s,it)=>s+calc(it).litersDay,0);
+  document.getElementById("tDay").textContent = php(totalDay);
+  document.getElementById("tMonth").textContent = php(totalDay*state.days);
+  document.getElementById("tLit").textContent = Math.round(lit).toLocaleString() + " L";
+  const month = totalDay*state.days, n = document.getElementById("budgetNote");
+  if(state.budget>0){
+    const pct = month/state.budget*100;
+    n.textContent = pct<=100
+      ? `Projected ${pct.toFixed(0)}% of your ₱${state.budget} budget (${php(state.budget-month)} to spare).`
+      : `⚠️ Projected ${php(month-state.budget)} OVER your ₱${state.budget} budget (${pct.toFixed(0)}%).`;
+    n.style.color = pct<=100 ? "var(--ok)" : "var(--warn)";
+  } else n.textContent = "";
+}
+
+// ---------- actions ----------
+function toggle(i){
+  const it = state.items[i];
+  if(timers[i]){ it.logSec += (Date.now()-timers[i])/1000; delete timers[i]; }
+  else timers[i] = Date.now();
+  save(); updateLive();
+}
+function addUse(i){ state.items[i].logSec += 1; save(); updateLive(); }
+function fmtTime(s){
+  s = Math.floor(s); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60;
+  return [h,m,x].map(v=>String(v).padStart(2,"0")).join(":");
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+document.getElementById("rate").addEventListener("input",e=>{state.rate=parseFloat(e.target.value)||0;save();render();});
+document.getElementById("days").addEventListener("input",e=>{state.days=parseInt(e.target.value)||30;save();render();});
+document.getElementById("budget").addEventListener("input",e=>{state.budget=parseFloat(e.target.value)||0;save();render();});
+
+document.getElementById("addBtn").onclick = ()=>{
+  const name = prompt("Outlet name (e.g. Backyard faucet):"); if(!name) return;
+  const type = confirm("Press OK if it runs continuously (L/min × minutes).\nPress Cancel if it's counted per use (liters per use × uses).") ? "flow":"use";
+  const flow = parseFloat(prompt(type==="flow"?"Flow rate in liters per minute:":"Liters per use:","6"))||0;
+  state.items.push({name,type,flow,use:0,logSec:0}); save(); render();
+};
+document.getElementById("resetLog").onclick = ()=>{ timers={}; state.items.forEach(i=>i.logSec=0); save(); render(); };
+document.getElementById("resetAll").onclick = ()=>{ if(confirm("Restore all defaults?")){ timers={}; state=fresh(); save(); init(); } };
+
+function init(){
+  document.getElementById("rate").value = state.rate;
+  document.getElementById("days").value = state.days;
+  document.getElementById("budget").value = state.budget;
+  render();
+}
+init();
+setInterval(updateLive, 1000);
+</script>
+</body>
+</html>
