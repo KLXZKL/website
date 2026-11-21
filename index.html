@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Water Bill Tracker</title>
+<style>
+  /* basic styles */
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #eaf4fb;
+    color: #222;
+    margin: 0;
+    padding: 0;
+  }
+
+  header {
+    background-color: #2a7fba;
+    color: white;
+    padding: 18px 20px;
+    text-align: center;
+  }
+  header h1 { margin: 0; font-size: 28px; }
+  header p { margin: 6px 0 0 0; font-size: 14px; }
+
+  .container {
+    max-width: 960px;
+    margin: 20px auto;
+    padding: 0 12px;
+  }
+
+  .box {
+    background-color: white;
+    border: 1px solid #b9d3e4;
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .box h2 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    color: #2a7fba;
+  }
+
+  label { font-size: 14px; }
+  input[type=number], select {
+    padding: 5px;
+    border: 1px solid #999;
+    border-radius: 3px;
+    font-size: 14px;
+  }
+  .settings label { margin-right: 14px; display: inline-block; margin-bottom: 8px; }
+  .settings input { width: 90px; }
+
+  button {
+    background-color: #2a7fba;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button:hover { background-color: #1d5f8c; }
+  button.gray { background-color: #777; }
+  button.gray:hover { background-color: #555; }
+  button.red { background-color: #c0392b; }
+  button.small { padding: 2px 8px; }
+
+  .totals { display: flex; flex-wrap: wrap; gap: 10px; }
+  .total-item {
+    flex: 1;
+    min-width: 150px;
+    background-color: #eaf4fb;
+    border: 1px solid #b9d3e4;
+    padding: 10px;
+    text-align: center;
+  }
+  .total-item span { display: block; font-size: 12px; color: #555; }
+  .total-item b { font-size: 22px; color: #1d5f8c; }
+
+  .budget-bar {
+    background-color: #ddd;
+    height: 18px;
+    border-radius: 3px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  #budgetFill { height: 100%; width: 0%; background-color: #3aa76d; }
+  #budgetText { font-size: 14px; margin-top: 6px; }
+
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid #c8d8e4; padding: 6px; text-align: center; }
+  th { background-color: #d6e8f5; }
+  td.left { text-align: left; }
+  td input { width: 64px; }
+
+  .note { font-size: 13px; color: #555; margin-top: 8px; }
+  .result { background-color: #f4f9fc; border: 1px solid #c8d8e4; padding: 8px; margin-top: 8px; font-size: 14px; }
+  .buttons { margin-top: 10px; }
+  .buttons button { margin-right: 6px; margin-bottom: 6px; }
+  footer { text-align: center; font-size: 12px; color: #666; padding: 20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Water Bill Tracker</h1>
+  <p>See how much each faucet, shower and toilet costs you per hour, per day and per month.</p>
+</header>
+
+<div class="container">
+
+  <!-- SETTINGS -->
+  <div class="box settings">
+    <h2>Settings</h2>
+    <label>Water rate (PHP per cubic meter): <input type="number" id="rate" min="0" step="0.5"></label>
+    <label>Days in the month: <input type="number" id="days" min="1" max="31"></label>
+    <label>Monthly budget (PHP): <input type="number" id="budget" min="0"></label>
+    <div class="note">
+      Look at your water bill to find your rate (total amount divided by cubic meters used).
+      1 cubic meter = 1,000 liters. The starting rate is just an example.
+    </div>
+  </div>
+
+  <!-- TOTALS -->
+  <div class="box">
+    <h2>Estimated Total</h2>
+    <div class="totals">
+      <div class="total-item"><span>Per month</span><b id="tMonth">0</b></div>
+      <div class="total-item"><span>Per day</span><b id="tDay">0</b></div>
+      <div class="total-item"><span>Liters per day</span><b id="tLit">0</b></div>
+      <div class="total-item"><span>Logged today (timers)</span><b id="tLog">0</b></div>
+    </div>
+    <div class="budget-bar"><div id="budgetFill"></div></div>
+    <div id="budgetText"></div>
+  </div>
+
+  <!-- TABLE OF OUTLETS -->
+  <div class="box">
+    <h2>Water Outlets in the House</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Outlet</th>
+            <th>Flow</th>
+            <th>Cost per hour / use</th>
+            <th>Daily use</th>
+            <th>Cost per day</th>
+            <th>Cost per month</th>
+            <th>Timer / counter</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="buttons">
+      <button id="addBtn">Add outlet</button>
+      <button id="resetLog" class="gray">Reset today's timers</button>
+      <button id="resetAll" class="gray">Restore defaults</button>
+    </div>
+    <div class="note">
+      Faucets, showers and hoses use <b>liters per minute</b> and <b>minutes per day</b>.
+      Toilets, washing machines and buckets use <b>liters per use</b> and <b>uses per day</b>.
+      The flow numbers are only estimates. You can measure your own with a bucket and a timer.
+    </div>
+  </div>
+
+  <!-- MATCH BILL -->
+  <div class="box">
+    <h2>Compare With My Real Bill</h2>
+    <label>Cubic meters on my last bill: <input type="number" id="lastBill" min="0" step="0.1"></label>
+    <button id="calBtn">Adjust my usage to match</button>
+    <div class="result" id="calResult">Type the cubic meters from your last bill to compare.</div>
+  </div>
+
+  <!-- WHAT IF -->
+  <div class="box">
+    <h2>What If I Use Less?</h2>
+    <label>Outlet: <select id="simOutlet"></select></label>
+    <label>Reduce by: <input type="number" id="simCut" min="0" value="5" style="width:70px"> <span id="simUnit">minutes per day</span></label>
+    <div class="result" id="simResult"></div>
+  </div>
+
+</div>
+
+<footer>Water Bill Tracker - a simple prototype. The numbers are estimates only.</footer>
+
+<script>
+// ---------- data ----------
+// type "flow": flow = liters per minute, use = minutes per day
+// type "use" : flow = liters per use,    use = uses per day
+var defaults = [
+  { name: "Kitchen faucet",        type: "flow", flow: 6,   use: 20 },
+  { name: "Shower",                type: "flow", flow: 9,   use: 15 },
+  { name: "Bathroom sink",         type: "flow", flow: 5,   use: 8 },
+  { name: "Toilet flush",          type: "use",  flow: 6,   use: 8 },
+  { name: "Tabo / bucket",         type: "use",  flow: 4,   use: 6 },
+  { name: "Washing machine",       type: "use",  flow: 100, use: 1 },
+  { name: "Dishwasher",            type: "use",  flow: 15,  use: 0 },
+  { name: "Garden hose",           type: "flow", flow: 15,  use: 10 },
+  { name: "Car wash (hose)",       type: "flow", flow: 15,  use: 0 },
+  { name: "Outdoor / laundry tap", type: "flow", flow: 8,   use: 10 },
+  { name: "Bathtub fill",          type: "use",  flow: 150, use: 0 }
+];
+
+var KEY = "waterTrackerSimple";
+var state = loadState();
+var timers = {};   // keeps the start time of running timers
+
+function newState() {
+  var items = [];
+  for (var i = 0; i < defaults.length; i++) {
+    var d = defaults[i];
+    items.push({ name: d.name, type: d.type, flow: d.flow, use: d.use, logged: 0 });
+  }
+  return { rate: 45, days: 30, budget: 800, lastBill: 0, day: new Date().toDateString(), items: items };
+}
+
+function loadState() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY));
+    if (saved && saved.items) return saved;
+  } catch (e) {}
+  return newState();
+}
+
+function saveState() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+// ---------- helpers ----------
+function peso(n) {
+  return "PHP " + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function costPerLiter() { return state.rate / 1000; }
+function el(id) { return document.getElementById(id); }
+function clean(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// liters used per day by one outlet
+function litersPerDay(item) { return item.flow * item.use; }
+
+// total liters per day of all outlets
+function totalLiters() {
+  var total = 0;
+  for (var i = 0; i < state.items.length; i++) total += litersPerDay(state.items[i]);
+  return total;
+}
+
+// seconds (or uses) logged today, including a running timer
+function loggedAmount(item, index) {
+  var amount = item.logged;
+  if (timers[index]) amount += (Date.now() - timers[index]) / 1000;
+  return amount;
+}
+
+// cost of what was logged today
+function loggedCost(item, index) {
+  var amount = loggedAmount(item, index);
+  if (item.type === "flow") return (amount / 60) * item.flow * costPerLiter();
+  return amount * item.flow * costPerLiter();
+}
+
+function formatTime(seconds) {
+  seconds = Math.floor(seconds);
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  var s = seconds % 60;
+  return [h, m, s].map(function (v) { return String(v).padStart(2, "0"); }).join(":");
+}
+
+// ---------- show everything on the page ----------
+function render() {
+  // new day = reset the timers
+  if (state.day !== new Date().toDateString()) {
+    for (var k = 0; k < state.items.length; k++) state.items[k].logged = 0;
+    state.day = new Date().toDateString();
+  }
+
+  var html = "";
+  var totalDay = 0;
+
+  for (var i = 0; i < state.items.length; i++) {
+    var it = state.items[i];
+    var costDay = litersPerDay(it) * costPerLiter();
+    totalDay += costDay;
+
+    var costRate, flowUnit, useUnit;
+    if (it.type === "flow") {
+      costRate = peso(it.flow * 60 * costPerLiter()) + " / hour";
+      flowUnit = "L/min";
+      useUnit = "min/day";
+    } else {
+      costRate = peso(it.flow * costPerLiter()) + " / use";
+      flowUnit = "L/use";
+      useUnit = "uses/day";
+    }
+
+    html += "<tr>" +
+      "<td class='left'>" + clean(it.name) + "</td>" +
+      "<td><input type='number' min='0' step='0.5' value='" + it.flow + "' onchange='changeValue(" + i + ", \"flow\", this.value)'> " + flowUnit + "</td>" +
+      "<td>" + costRate + "</td>" +
+      "<td><input type='number' min='0' step='0.5' value='" + it.use + "' onchange='changeValue(" + i + ", \"use\", this.value)'> " + useUnit + "</td>" +
+      "<td>" + peso(costDay) + "</td>" +
+      "<td>" + peso(costDay * state.days) + "</td>" +
+      "<td id='live" + i + "'></td>" +
+      "</tr>";
+  }
+
+  el("tableBody").innerHTML = html;
+  showTotals(totalDay);
+  updateLive();
+  fillOutletList();
+  showCompare();
+  showWhatIf();
+}
+
+function showTotals(totalDay) {
+  var month = totalDay * state.days;
+  el("tMonth").textContent = peso(month);
+  el("tDay").textContent = peso(totalDay);
+  el("tLit").textContent = Math.round(totalLiters()).toLocaleString() + " L";
+
+  if (state.budget > 0) {
+    var percent = month / state.budget * 100;
+    el("budgetFill").style.width = Math.min(percent, 100) + "%";
+    el("budgetFill").style.backgroundColor = percent > 100 ? "#c0392b" : "#3aa76d";
+    if (percent <= 100) {
+      el("budgetText").textContent = Math.round(percent) + "% of your budget used. " + peso(state.budget - month) + " left.";
+    } else {
+      el("budgetText").textContent = "Over budget by " + peso(month - state.budget) + " (" + Math.round(percent) + "%).";
+    }
+  } else {
+    el("budgetFill").style.width = "0%";
+    el("budgetText").textContent = "Set a monthly budget above to see the bar.";
+  }
+}
+
+// this one runs every second to update the timers
+function updateLive() {
+  var logTotal = 0;
+  for (var i = 0; i < state.items.length; i++) {
+    var it = state.items[i];
+    var cell = el("live" + i);
+    logTotal += loggedCost(it, i);
+    if (!cell) continue;
+
+    if (it.type === "flow") {
+      var running = !!timers[i];
+      cell.innerHTML = formatTime(loggedAmount(it, i)) + " (" + peso(loggedCost(it, i)) + ") " +
+        "<button class='small " + (running ? "red" : "") + "' onclick='toggleTimer(" + i + ")'>" + (running ? "Stop" : "Start") + "</button>";
+    } else {
+      cell.innerHTML = it.logged + " used (" + peso(loggedCost(it, i)) + ") " +
+        "<button class='small' onclick='addUse(" + i + ")'>+1</button>";
+    }
+  }
+  el("tLog").textContent = peso(logTotal);
+}
+
+// ---------- compare with real bill ----------
+function estimatedCubicMeters() {
+  return totalLiters() * state.days / 1000;
+}
+
+function showCompare() {
+  if (!(state.lastBill > 0)) {
+    el("calResult").textContent = "Type the cubic meters from your last bill to compare.";
+    return;
+  }
+  var estimate = estimatedCubicMeters();
+  var diff = (estimate - state.lastBill) / state.lastBill * 100;
+  var message;
+  if (Math.abs(diff) <= 5) message = "Very close!";
+  else if (diff > 0) message = "My estimate is higher than the real bill.";
+  else message = "My estimate is lower than the real bill.";
+  el("calResult").innerHTML = "Estimate: <b>" + estimate.toFixed(1) + " m3</b> | Real bill: <b>" + state.lastBill +
+    " m3</b> | Difference: <b>" + (diff > 0 ? "+" : "") + diff.toFixed(0) + "%</b><br>" + message;
+}
+
+function matchBill() {
+  if (!(state.lastBill > 0)) { alert("Please type your last bill first."); return; }
+  var estimate = estimatedCubicMeters();
+  if (estimate <= 0) { alert("Set some daily use first."); return; }
+  var factor = state.lastBill / estimate;
+  for (var i = 0; i < state.items.length; i++) {
+    state.items[i].use = Math.round(state.items[i].use * factor * 10) / 10;
+  }
+  saveState();
+  render();
+}
+
+// ---------- what if ----------
+function fillOutletList() {
+  var select = el("simOutlet");
+  var old = select.value;
+  var options = "";
+  for (var i = 0; i < state.items.length; i++) {
+    options += "<option value='" + i + "'>" + clean(state.items[i].name) + "</option>";
+  }
+  select.innerHTML = options;
+  if (old !== "" && state.items[old]) select.value = old;
+}
+
+function showWhatIf() {
+  var item = state.items[Number(el("simOutlet").value)];
+  if (!item) return;
+  el("simUnit").textContent = item.type === "flow" ? "minutes per day" : "uses per day";
+
+  var cut = Math.max(0, parseFloat(el("simCut").value) || 0);
+  if (cut > item.use) cut = item.use;       // cannot reduce more than what is used
+  var litersSaved = item.flow * cut;
+
+  if (item.use <= 0) {
+    el("simResult").textContent = "This outlet has no daily use set, so there is nothing to reduce.";
+  } else {
+    el("simResult").innerHTML = "I would save about <b>" + peso(litersSaved * costPerLiter() * state.days) +
+      "</b> per month and <b>" + Math.round(litersSaved * 365).toLocaleString() + " liters</b> per year.";
+  }
+}
+
+// ---------- button actions ----------
+function changeValue(index, field, value) {
+  state.items[index][field] = Math.max(0, parseFloat(value) || 0);
+  saveState();
+  render();
+}
+
+function toggleTimer(index) {
+  var item = state.items[index];
+  if (timers[index]) {
+    item.logged += (Date.now() - timers[index]) / 1000;
+    delete timers[index];
+  } else {
+    timers[index] = Date.now();
+  }
+  saveState();
+  updateLive();
+}
+
+function addUse(index) {
+  state.items[index].logged += 1;
+  saveState();
+  updateLive();
+}
+
+el("rate").oninput = function () { state.rate = parseFloat(this.value) || 0; saveState(); render(); };
+el("days").oninput = function () { state.days = parseInt(this.value) || 30; saveState(); render(); };
+el("budget").oninput = function () { state.budget = parseFloat(this.value) || 0; saveState(); render(); };
+el("lastBill").oninput = function () { state.lastBill = Math.max(0, parseFloat(this.value) || 0); saveState(); showCompare(); };
+el("calBtn").onclick = matchBill;
+el("simOutlet").onchange = showWhatIf;
+el("simCut").oninput = showWhatIf;
+
+el("addBtn").onclick = function () {
+  var name = prompt("Name of the outlet (example: Backyard faucet):");
+  if (!name) return;
+  var type = confirm("Press OK if it runs continuously (liters per minute).\nPress Cancel if it is counted per use (liters per use).") ? "flow" : "use";
+  var flow = parseFloat(prompt(type === "flow" ? "Liters per minute:" : "Liters per use:", "6")) || 0;
+  state.items.push({ name: name, type: type, flow: flow, use: 0, logged: 0 });
+  saveState();
+  render();
+};
+
+el("resetLog").onclick = function () {
+  timers = {};
+  for (var i = 0; i < state.items.length; i++) state.items[i].logged = 0;
+  saveState();
+  render();
+};
+
+el("resetAll").onclick = function () {
+  if (confirm("Restore all the default values?")) {
+    timers = {};
+    state = newState();
+    saveState();
+    start();
+  }
+};
+
+// ---------- start ----------
+function start() {
+  el("rate").value = state.rate;
+  el("days").value = state.days;
+  el("budget").value = state.budget;
+  el("lastBill").value = state.lastBill || "";
+  render();
+}
+
+start();
+setInterval(updateLive, 1000);   // update the timers every second
+</script>
+
+</body>
+</html>
